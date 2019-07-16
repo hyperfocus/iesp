@@ -1,10 +1,32 @@
-job: 
-  stage: test
+start_review:
+  stage: review
   script:
-    - oc login -u admin -p redhat1 https://swdvos001.swimtest1.act.faa.gov 
+    - oc login -u admin -p redhat1 https://swdvos001.swimtest1.act.faa.gov
     - oc new-project ncr || oc project ncr
-    - oc create -f ncr-operator_deve2.yaml
+    - oc apply -f ncr-operator_deve2.yaml
     - oc apply -f ncr_deve2.yaml
-  tags:
-    - oc
+  environment:
+    name: review/$CI_BUILD_REF_NAME
+    url: http://$CI_BUILD_REF_NAME.$APPS_DOMAIN
+    on_stop: stop_review
+  only:
+    - branches
+  except:
+    - master
 
+stop_review:
+  stage: review
+  variables:
+    GIT_STRATEGY: none
+  script:
+    - oc project ncr
+    - oc delete -f ncr-operator_deve2.yaml
+    - oc delete -f ncr_deve2.yaml
+  when: manual
+  environment:
+    name: review/$CI_BUILD_REF_NAME
+    action: stop
+  only:
+    - branches
+  except:
+    - master
