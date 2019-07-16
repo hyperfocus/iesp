@@ -10,6 +10,7 @@ start_review:
     - oc new-project ncr || oc project ncr
     - oc create -f ncr-operator_deve2.yaml
     - oc create -f ncr_deve2.yaml
+    - oc create -f dvt_deve2.yaml
   environment:
     name: review/$CI_BUILD_REF_NAME
     url: http://$CI_BUILD_REF_NAME.$APPS_DOMAIN
