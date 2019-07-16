@@ -3,8 +3,8 @@ job:
   script:
     - oc login -u admin -p redhat1 https://swdvos001.swimtest1.act.faa.gov 
     - oc new-project ncr || oc project ncr
-    - oc apply -f ncr-operator_deve.yaml
-    - oc apply -f ncr_deve.yaml
+    - oc apply -f ncr-operator_deve2.yaml
+    - oc apply -f ncr_deve2.yaml
   tags:
     - oc
 
