@@ -1,3 +1,8 @@
+stages:
+  - review
+  - test
+  - deploy
+
 start_review:
   stage: review
   script:
