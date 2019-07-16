@@ -1,0 +1,139 @@
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  creationTimestamp: null
+  name: prometheus
+  namespace: openshift-monitoring
+---
+apiVersion: v1
+kind: SecurityContextConstraints
+metadata:
+  name: prometheus
+users:
+  - system:serviceaccount:openshift-monitoring:prometheus
+requiredDropCapabilities:
+  - MKNOD
+  - SYS_CHROOT
+runAsUser:
+  type: MustRunAs
+  uid: 1000
+fsGroup:
+  type: MustRunAs
+  ranges:
+    - min: 2000
+      max: 2000
+seLinuxContext:
+  type: MustRunAs
+volumes:
+  - configMap
+  - downwardAPI
+  - emptyDir
+  - persistentVolumeClaim
+  - projected
+  - secret
+
+---
+apiVersion: rbac.authorization.k8s.io/v1beta1
+kind: ClusterRole
+metadata:
+  name: prometheus
+  namespace: openshift-monitoring
+rules:
+  - apiGroups: [""]
+    resources:
+      - nodes
+      - services
+      - endpoints
+      - pods
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources:
+      - configmaps
+    verbs: ["get"]
+  - nonResourceURLs: ["/metrics"]
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1beta1
+kind: ClusterRoleBinding
+metadata:
+  name: prometheus
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: prometheus
+subjects:
+  - kind: ServiceAccount
+    name: prometheus
+    namespace: openshift-monitoring
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: ncr-consumers-processors
+  labels:
+    metric: ncr
+spec:
+  namespaceSelector:
+    matchNames:
+      - ncr
+      - ncr-archive
+  selector:
+    matchLabels:
+      metric: ncr
+  endpoints:
+    - interval: 5s
+      port: web
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: ncr-kafka
+  labels:
+    metric: ncr
+spec:
+  namespaceSelector:
+    matchNames:
+      - ncr
+  selector:
+    matchLabels:
+      strimzi.io/cluster: ncr-cluster
+  endpoints:
+    - interval: 5s
+      port: metrics
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: ncr-spring
+  labels:
+    metric: ncr
+spec:
+  namespaceSelector:
+    matchNames:
+      - ncr
+      - ncr-ocp-interface
+  selector:
+    matchLabels:
+      metric: ncr-spring
+  endpoints:
+    - interval: 5s
+      path: /actuator/prometheus
+      port: web
+---
+apiVersion: monitoring.coreos.com/v1
+kind: Prometheus
+metadata:
+  name: ncr
+  labels:
+    prometheus: ncr
+spec:
+  serviceAccountName: prometheus
+  baseImage: devencrrepo01.ncr.nas.faa.gov:5000/prometheus
+  tag: 2.10.0
+  serviceMonitorSelector:
+    matchLabels:
+      metric: ncr
+  resources:
+    requests:
+      memory: 400Mi

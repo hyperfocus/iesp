@@ -1,0 +1,435 @@
+apiVersion: rbac.authorization.k8s.io/v1beta1
+kind: ClusterRole
+metadata:
+  name: ncr-test
+  labels:
+    app: ncr-test
+rules:
+  - apiGroups:
+      - apps
+    resources:
+      - deployments
+      - deployments/scale
+      - replicasets
+    verbs:
+      - get
+      - list
+      - watch
+      - patch
+      - update
+  - apiGroups:
+      - extensions
+    resources:
+      - deployments
+      - deployments/scale
+      - replicasets
+    verbs:
+      - get
+      - list
+      - watch
+      - patch
+      - update
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: ncr
+  namespace: ncr
+  labels:
+    app: ncr
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: ncr
+  namespace: ncr-test
+  labels:
+    app: ncr
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: ncr
+  namespace: ncr-archive
+  labels:
+    app: ncr
+---
+apiVersion: rbac.authorization.k8s.io/v1beta1
+kind: ClusterRoleBinding
+metadata:
+  name: ncr-test
+  labels:
+    app: ncr-test
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: ncr-test
+subjects:
+  - kind: ServiceAccount
+    name: ncr
+    namespace: ncr-test
+---
+apiVersion: v1
+kind: SecurityContextConstraints
+metadata:
+  name: ncr
+users:
+  - system:serviceaccount:ncr:ncr
+  - system:serviceaccount:ncr-test:ncr
+  - system:serviceaccount:ncr-archive:ncr
+groups:
+  - system:cluster-admins
+priority: 10
+readOnlyRootFilesystem: false
+supplementalGroups:
+  type: RunAsAny
+requiredDropCapabilities:
+  - MKNOD
+runAsUser:
+  type: RunAsAny
+fsGroup:
+  type: RunAsAny
+seLinuxContext:
+  type: MustRunAs
+volumes:
+- configMap
+- downwardAPI
+- emptyDir
+- persistentVolumeClaim
+- projected
+- secret
+---
+
+apiVersion: us.gov.dot.faa.atm.ncr/v1alpha1
+kind: NasCommonReference
+metadata:
+  name: nas-common-reference
+spec:
+  ncrRelease:
+    dockerRelease: "50"
+    dbVersion: "5.31.2019"
+  ncr:
+    # ------ ORDER 1 deployments ------------------
+    - name: importer
+      order: 1
+      image: importer:2.6.6.1.0
+      replicas: 1
+      port: 8090
+      readinessProbe: "/actuator/prometheus"
+      serviceAccount: ncr
+      app: ncr-services
+      env:
+        SPRING_PROFILES_ACTIVE: deve2
+
+    - name: geoserver
+      order: 1
+      image: geoserver:5.4.7.1.0
+      replicas: 1
+      port: 8080
+      serviceAccount: ncr
+      app: ncr-services
+      readinessProbe: "/geoserver"
+      env:
+        NCR_PG_HOST: devencrdb01.ncr.nas.faa.gov
+
+    - name: publication-service
+      order: 1
+      image: publication-service:2.4.3.1.0
+      replicas: 1
+      port: 8090
+      readinessProbe: "/actuator/prometheus"
+      serviceAccount: ncr
+      app: ncr-services
+      env:
+        SPRING_PROFILES_ACTIVE: deve2
+
+    - name: ncr-services
+      order: 1
+      image: ncr-services:2.4.2.1.2
+      replicas: 1
+      port: 8090
+      readinessProbe: "/actuator/prometheus"
+      app: ncr-services
+      serviceAccount: ncr
+      route: subscription-service
+      env:
+        SPRING_PROFILES_ACTIVE: deve2
+
+    - name: feature-expirer
+      order: 1
+      image: feature-expirer:1.0.5.1.0
+      replicas: 1
+      port: 8090
+      app: ncr-services
+      serviceAccount: ncr
+      env:
+        SPRING_PROFILES_ACTIVE: deve2
+
+    - name: ext-interface
+      order: 1
+      image: ext-interface:1.1.1.1.0
+      replicas: 1
+      port: 8090
+      app: ncr-services
+      serviceAccount: ncr
+      env:
+        SPRING_PROFILES_ACTIVE: deve2
+
+    # ----- ORDER 2 deployments -----------
+    - name: rvr-import-processor
+      order: 2
+      image: rvr-import-processor:2.2.8.1.0
+      replicas: 1
+      port: 1234
+      readinessProbe: "/metrics"
+      app: ncr-processors
+      serviceAccount: ncr
+      env:
+        KAFKA_URI: ncr-cluster-kafka-bootstrap.ncr.svc:9092
+        IMPORTER_HOST: importer.ncr.svc
+        IMPORTER_PORT: 8090
+
+    - name: flow-import-processor
+      order: 2
+      image: flow-import-processor:2.2.7.1.0
+      replicas: 1
+      port: 1234
+      readinessProbe: "/metrics"
+      app: ncr-processors
+      serviceAccount: ncr
+      env:
+        KAFKA_URI: ncr-cluster-kafka-bootstrap.ncr.svc:9092
+        IMPORTER_HOST: importer.ncr.svc
+        IMPORTER_PORT: 8090
+
+    - name: saa-import-processor
+      order: 2
+      image: saa-import-processor:1.0.3.1.0
+      replicas: 1
+      port: 1234
+      readinessProbe: "/metrics"
+      app: ncr-processors
+      serviceAccount: ncr
+      env:
+        KAFKA_URI: ncr-cluster-kafka-bootstrap.ncr.svc:9092
+        IMPORTER_HOST: importer.ncr.svc
+        IMPORTER_PORT: 8090
+
+    - name: notam-import-processor
+      order: 2
+      image: notam-import-processor:1.0.6.1.0
+      replicas: 1
+      port: 1234
+      readinessProbe: "/metrics"
+      app: ncr-processors
+      serviceAccount: ncr
+      env:
+        KAFKA_URI: ncr-cluster-kafka-bootstrap.ncr.svc:9092
+        IMPORTER_HOST: importer.ncr.svc
+        IMPORTER_PORT: 8090
+
+    - name: wx-import-processor
+      order: 2
+      image: wx-import-processor:1.0.5.1.0
+      replicas: 1
+      port: 1234
+      readinessProbe: "/metrics"
+      app: ncr-processors
+      serviceAccount: ncr
+      env:
+        KAFKA_URI: ncr-cluster-kafka-bootstrap.ncr.svc:9092
+        IMPORTER_HOST: importer.ncr.svc
+        IMPORTER_PORT: 8090
+
+    - name: change-event-processor
+      order: 2
+      image: publication-processor:2.3.6.1.0
+      replicas: 1
+      port: 1234
+      readinessProbe: "/metrics"
+      app: ncr-processors
+      serviceAccount: ncr
+      env:
+        KAFKA_URI: ncr-cluster-kafka-bootstrap.ncr.svc:9092
+        PUBLICATION_URI: publication-service.ncr.svc:8090
+        PROCESS_MODE: NON_JMS
+        MAX_SPOUT_PENDING: 1
+        ENVIRONMENT: deve2
+
+    - name: solace-out-processor
+      order: 2
+      image: publication-processor:2.3.6.1.0
+      replicas: 1
+      port: 1234
+      readinessProbe: "/metrics"
+      app: ncr-processors
+      serviceAccount: ncr
+      env:
+        KAFKA_URI: ncr-cluster-kafka-bootstrap.ncr.svc:9092
+        ENVIRONMENT: deve2
+        PUBLICATION_URI: publication-service.ncr.svc:8090
+        PROCESS_MODE: JMS
+
+    # ------------------ ORDER 3 deployments -------------------
+    - name: nasr-consumer
+      order: 3
+      image: nasr-consumer:2.3.4.1.1
+      replicas: 1
+      port: 1234
+      readinessProbe: "/metrics"
+      app: ncr-static-consumers
+      serviceAccount: ncr
+      validation:
+        sql: "SELECT
+                CASE
+                WHEN count_airport >= (19778 - 100) AND
+                     count_runway  >= (7287 - 100)  AND
+              	     count_fix     >= (63498 - 100) AND
+              	     count_airway  >= (1234 - 10)   AND
+              	     count_artcc   >= (25 - 5)      AND
+              	     count_saa     >= (1170 - 100)  AND
+              	     count_awos    >= (2579 - 100)  THEN 1
+                ELSE 0 END AS result,
+                count_airport,
+                count_runway,
+                count_fix,
+                count_airway,
+                count_artcc,
+                count_awos
+              FROM
+              (
+                SELECT
+                (SELECT count(id) as count_airport FROM ncr.airport) AS count_airport,
+                (SELECT count(id) as count_runway FROM ncr.runway) AS count_runway,
+                (SELECT count(id) as count_fix FROM ncr.fix) AS count_fix,
+                (SELECT count(id) as count_airway FROM ncr.airway) AS count_airway,
+                (SELECT count(id) as count_artcc FROM ncr.artcc) AS count_artcc,
+                (SELECT count(id) as count_awos FROM ncr.awos) AS count_awos,
+                (SELECT count(id) as count_saa FROM ncr.saa) AS count_saa
+              ) AS sub;"
+      env:
+        KAFKA_URI: ncr-cluster-kafka-bootstrap.ncr.svc:9092
+        POSTGRES_HOST: devencrdb01.ncr.nas.faa.gov
+
+    - name: rvr-consumer
+      order: 4
+      image: rvr-consumer:2.3.7.1.0
+      replicas: 1
+      port: 1234
+      readinessProbe: "/metrics"
+      app: ncr-live-consumers
+      serviceAccount: ncr
+      env:
+        KAFKA_URI: ncr-cluster-kafka-bootstrap.ncr.svc:9092
+        ENVIRONMENT: deve2
+
+    - name: flow-consumer
+      order: 4
+      image: flow-consumer:2.3.6.1.0
+      replicas: 1
+      port: 1234
+      readinessProbe: "/metrics"
+      app: ncr-live-consumers
+      serviceAccount: ncr
+      env:
+        KAFKA_URI: ncr-cluster-kafka-bootstrap.ncr.svc:9092
+        ENVIRONMENT: deve2
+
+    - name: rvr-consumer-status
+      order: 4
+      image: rvr-consumer:2.3.7.1.0
+      replicas: 1
+      port: 1234
+      readinessProbe: "/metrics"
+      app: ncr-live-consumers
+      serviceAccount: ncr
+      env:
+        KAFKA_URI: ncr-cluster-kafka-bootstrap.ncr.svc:9092
+        ENVIRONMENT: deve2-status
+
+    - name: fns-consumer
+      order: 4
+      image: fns-consumer:2.3.8.1.0
+      replicas: 1
+      port: 1234
+      readinessProbe: "/metrics"
+      app: ncr-live-consumers
+      serviceAccount: ncr
+      env:
+        KAFKA_URI: ncr-cluster-kafka-bootstrap.ncr.svc:9092
+        ENVIRONMENT: deve2
+
+  ncr-test:
+    - name: flow-consumer
+      order: 1
+      image: flow-consumer:2.3.6.1.0
+      replicas: 1
+      port: 1234
+      readinessProbe: "/metrics"
+      app: ncr-test-consumers
+      serviceAccount: ncr
+      env:
+        KAFKA_URI: ncr-cluster-kafka-bootstrap.ncr.svc:9092
+        ENVIRONMENT: deve2-test
+
+    - name: rvr-consumer
+      order: 1
+      image: rvr-consumer:2.3.7.1.0
+      replicas: 1
+      port: 1234
+      readinessProbe: "/metrics"
+      app: ncr-test-consumers
+      serviceAccount: ncr
+      env:
+        KAFKA_URI: ncr-cluster-kafka-bootstrap.ncr.svc:9092
+        ENVIRONMENT: deve2-test
+
+    - name: fns-consumer
+      order: 1
+      image: fns-consumer:2.3.8.1.0
+      replicas: 1
+      port: 1234
+      readinessProbe: "/metrics"
+      app: ncr-test-consumers
+      serviceAccount: ncr
+      env:
+        KAFKA_URI: ncr-cluster-kafka-bootstrap.ncr.svc:9092
+        ENVIRONMENT: deve2-test
+
+    - name: wx-consumer
+      order: 1
+      image: wx-consumer:1.1.5.1.0
+      replicas: 1
+      port: 1234
+      readinessProbe: "/metrics"
+      app: ncr-test-consumers
+      serviceAccount: ncr
+      env:
+        KAFKA_URI: ncr-cluster-kafka-bootstrap.ncr.svc:9092
+        ENVIRONMENT: deve2-test
+
+    - name: integration-testing
+      order: 2
+      image: integration-testing:6.1.2.1
+      replicas: 1
+      port: 1234
+      app: integration-testing
+      serviceAccount: ncr
+      env:
+        SERVICE_ENDPOINT_TYPE: INTERNAL
+        PUB_ENDPOINT_TYPE: EXTERNAL
+        CONFIG_ENV_YAML: deve2
+        TEST_TYPE: full
+        RUN_INTERVAL: 20
+
+  ncr-archive:
+    name: archiver
+    order: 1
+    image: archiver:1.0.1.1.0
+    replicas: 1
+    port: 1234
+    readinessProbe: "/metrics"
+    app: ncr-archiver
+    serviceAccount: ncr
+    env:
+      KAFKA_URI: ncr-cluster-kafka-bootstrap.ncr.svc:9092

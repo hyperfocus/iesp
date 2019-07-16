@@ -1,0 +1,314 @@
+apiVersion: apiextensions.k8s.io/v1beta1
+kind: CustomResourceDefinition
+metadata:
+  name: ncr.us.gov.dot.faa.atm.ncr
+  labels:
+    app: ncr
+spec:
+  group: us.gov.dot.faa.atm.ncr
+  version: v1alpha1
+  scope: Namespaced
+  names:
+    kind: NasCommonReference
+    singular: ncr
+    plural: ncr
+  validation:
+    openAPIV3Schema:
+      properties:
+        spec:
+          type: object
+          properties:
+            ncrRelease:
+              type: object
+              properties:
+                dockerRelease:
+                  type: string
+                dbVersion:
+                  type: string
+            ncr:
+              type: array
+              items:
+                type: object
+                properties:
+                  order:
+                    type: integer
+                  name:
+                    type: string
+                  image:
+                    type: string
+                  replicas:
+                    type: integer
+                    minimum: 1
+                  port:
+                    type: integer
+                  route:
+                    type: string
+                  serviceAccount:
+                    type: string
+                  readinessProbe:
+                    type: string
+                  app:
+                    type: string
+                  env:
+                    type: object
+                  validation:
+                    type: object
+                    properties:
+                      sql:
+                        type: string
+                required:
+                  - name
+                  - replicas
+                  - image
+                  - env
+                  - order
+            ncr-archive:
+              type: object
+              properties:
+                order:
+                  type: integer
+                name:
+                  type: string
+                image:
+                  type: string
+                replicas:
+                  type: integer
+                  minimum: 1
+                port:
+                  type: integer
+                serviceAccount:
+                  type: string
+                readinessProbe:
+                  type: string
+                app:
+                  type: string
+                env:
+                  type: object
+              required:
+                - name
+                - replicas
+                - image
+                - env
+                - order
+            ncr-test:
+              type: array
+              items:
+                type: object
+                properties:
+                  order:
+                    type: integer
+                  name:
+                    type: string
+                  image:
+                    type: string
+                  replicas:
+                    type: integer
+                    minimum: 1
+                  port:
+                    type: integer
+                  serviceAccount:
+                    type: string
+                  readinessProbe:
+                    type: string
+                  app:
+                    type: string
+                  env:
+                    type: object
+                  route:
+                    type: string
+                  validation:
+                    type: object
+                    properties:
+                      sql:
+                        type: string
+                required:
+                  - name
+                  - replicas
+                  - image
+                  - env
+                  - order
+          required:
+            - ncr
+            - ncr-archive
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: ncr-operator
+  namespace: ncr
+  labels:
+    app: ncr-operator
+
+---
+apiVersion: v1
+kind: SecurityContextConstraints
+metadata:
+  name: ncr-operator
+users:
+  - system:serviceaccount:ncr:ncr-operator
+groups:
+  - system:cluster-admins
+priority: 10
+readOnlyRootFilesystem: false
+supplementalGroups:
+  type: RunAsAny
+requiredDropCapabilities:
+  - MKNOD
+runAsUser:
+  type: RunAsAny
+fsGroup:
+  type: RunAsAny
+seLinuxContext:
+  type: MustRunAs
+volumes:
+- configMap
+- downwardAPI
+- emptyDir
+- persistentVolumeClaim
+- projected
+- secret
+---
+apiVersion: rbac.authorization.k8s.io/v1beta1
+kind: ClusterRole
+metadata:
+  name: ncr-operator
+  labels:
+    app: ncr-operator
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - pods
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - ""
+    resources:
+      - events
+    verbs:
+      - create
+      - get
+      - list
+      - watch
+      - patch
+      - update
+  - apiGroups:
+      - ""
+    resources:
+      - services
+    verbs:
+      - create
+      - delete
+      - get
+      - list
+      - patch
+      - update
+      - watch
+  - apiGroups:
+      - apps.openshift.io
+    resources:
+      - deploymentconfigs
+    verbs:
+      - get
+      - list
+      - watch
+      - patch
+      - create
+      - delete
+  - apiGroups:
+      - route.openshift.io
+    resources:
+      - routes
+    verbs:
+      - get
+      - list
+      - patch
+      - create
+      - delete
+  - apiGroups:
+      - apps
+    resources:
+      - deployments
+      - deployments/scale
+      - replicasets
+    verbs:
+      - get
+      - list
+      - watch
+      - create
+      - delete
+      - patch
+      - update
+  - apiGroups:
+      - extensions
+    resources:
+      - deployments
+      - deployments/scale
+      - replicasets
+    verbs:
+      - get
+      - list
+      - watch
+      - create
+      - delete
+      - patch
+      - update
+  - apiGroups:
+      - us.gov.dot.faa.atm.ncr
+    resources:
+      - ncr
+    verbs:
+      - get
+      - list
+      - watch
+      - create
+      - delete
+      - patch
+      - update
+
+---
+apiVersion: rbac.authorization.k8s.io/v1beta1
+kind: ClusterRoleBinding
+metadata:
+  name: ncr-operator
+  labels:
+    app: ncr-operator
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: ncr-operator
+subjects:
+  - kind: ServiceAccount
+    name: ncr-operator
+    namespace: ncr
+
+---
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: ncr-operator
+  labels:
+    app: ncr-operator
+spec:
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        name: ncr
+        dockerRelease: "50"
+        dbVersion: "5.31.2019"
+    spec:
+      serviceAccountName: ncr-operator
+      containers:
+        - name: ncr-operator
+          image: devencrrepo01.ncr.nas.faa.gov:5000/ncr-operator:1.0.4.1.1
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: POSTGRES_HOST
+              value: "devencrdb01.ncr.nas.faa.gov"
+            - name: IMAGE_REPO
+              value: "devencrrepo01.ncr.nas.faa.gov:5000"
+  strategy:
+    type: Recreate

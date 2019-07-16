@@ -1,0 +1,120 @@
+apiVersion: v1
+kind: Template
+metadata:
+  name: ncr-ocp-interface
+  namespace: ncr-ocp-interface
+objects:
+- apiVersion: v1
+  kind: ServiceAccount
+  metadata:
+    name: ocp-interface
+    namespace: ncr-ocp-interface
+    labels:
+      app: ncr-ocp-interface
+
+- apiVersion: rbac.authorization.k8s.io/v1beta1
+  kind: ClusterRole
+  metadata:
+    name: ncr-ocp-interface
+    labels:
+      app: ncr-ocp-interface
+  rules:
+  - apiGroups:
+      - ""
+    resources:
+      - pods
+      - imagestreamimages
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - image.openshift.io
+    resources:
+      - imagestreams
+      - imagestreamtags
+      - imagestreamimages
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - "apps.openshift.io"
+    resources:
+      - deploymentconfigs
+    verbs:
+      - get
+      - list
+      - watch
+      - patch
+  - apiGroups:
+      - apps
+    resources:
+      - deployments
+      - deployments/scale
+    verbs:
+      - get
+      - list
+      - watch
+      - patch
+
+- apiVersion: rbac.authorization.k8s.io/v1beta1
+  kind: ClusterRoleBinding
+  metadata:
+    name: ncr-ocp-interface
+  roleRef:
+    apiGroup: rbac.authorization.k8s.io
+    kind: ClusterRole
+    name: ncr-ocp-interface
+  subjects:
+    - kind: ServiceAccount
+      name: ocp-interface
+      namespace: ncr-ocp-interface
+
+- apiVersion: extensions/v1beta1
+  kind: Deployment
+  metadata:
+    name: ncr-ocp-interface
+    labels:
+      app: ncr-ocp-interface
+    namespace: ncr-ocp-interface
+  spec:
+    replicas: 1
+    template:
+      metadata:
+        labels:
+          app: ncr-ocp-interface
+          name: ncr-ocp-interface
+      spec:
+        serviceAccountName: ocp-interface
+        containers:
+          - name: ncr-ocp-interface
+            image: ${REPO}/ncr-ocp-interface:1.1
+            imagePullPolicy: IfNotPresent
+            ports:
+              - containerPort: 8080
+            readinessProbe:
+              httpGet:
+                path: /actuator/health
+                port: 8080
+
+- apiVersion: v1
+  kind: Service
+  metadata:
+    labels:
+      app: ncr-ocp-interface
+      metric: ncr-spring
+    name: ncr-ocp-interface
+    namespace: ncr-ocp-interface
+  spec:
+    ports:
+      - name: web
+        port: 8080
+        protocol: TCP
+        targetPort: 8080
+    selector:
+      app: ncr-ocp-interface
+
+parameters:
+  - description: Docker image registry
+    name: REPO
