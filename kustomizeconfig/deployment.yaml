@@ -1,0 +1,5 @@
+images:
+        #- path: spec/template/spec/containers/image
+        #  kind: Deployment
+- path: spec/ncr/image
+  kind: NasCommonReference
